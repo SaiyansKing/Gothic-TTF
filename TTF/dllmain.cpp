@@ -312,8 +312,14 @@ int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
 
     std::string fntName;
     ReadFontDetails(fontName, fntName, size, r, g, b, a);
-    *reinterpret_cast<int*>(zCFont + 0x14) = size;
     if(!g_GD3D11) std::swap(r, b);
+
+    if(*reinterpret_cast<BYTE*>(0x6E0238) == 0xE9)
+    {
+        float UIscale = *reinterpret_cast<float*>(*reinterpret_cast<DWORD*>(0x5A88E1));
+        size = static_cast<int>(size * UIscale);
+    }
+    *reinterpret_cast<int*>(zCFont + 0x14) = size;
 
     zSTRING_G2& path = reinterpret_cast<zSTRING_G2&(__thiscall*)(DWORD, int)>(0x45FC00)(*reinterpret_cast<DWORD*>(0x869694), 23);
     fntName.insert(0, "\\_WORK\\FONTS\\G1_");
@@ -340,19 +346,22 @@ int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
         }
     }
 
-    FT_Set_Pixel_Sizes(ttFont->fontFace, 0, *reinterpret_cast<int*>(zCFont + 0x14));
+    FT_Set_Pixel_Sizes(ttFont->fontFace, 0, size);
     if(FT_IS_SCALABLE(ttFont->fontFace))
     {
         FT_Fixed scale = ttFont->fontFace->size->metrics.y_scale;
         int height = FT_MulFix(ttFont->fontFace->height, scale);
         int ascent = FT_MulFix(ttFont->fontFace->ascender, scale);
+        int descent = FT_MulFix(ttFont->fontFace->descender, scale);
         *reinterpret_cast<int*>(zCFont + 0x24) = static_cast<int>(((height + 63) & -64) / 64);
         *reinterpret_cast<int*>(zCFont + 0x28) = static_cast<int>(((ascent + 63) & -64) / 64);
+        *reinterpret_cast<int*>(zCFont + 0x2C) = static_cast<int>(((descent + 63) & -64) / 64);
     }
     else
     {
         *reinterpret_cast<int*>(zCFont + 0x24) = static_cast<int>(((ttFont->fontFace->size->metrics.height + 63) & -64) / 64);
         *reinterpret_cast<int*>(zCFont + 0x28) = static_cast<int>(((ttFont->fontFace->size->metrics.ascender + 63) & -64) / 64);
+        *reinterpret_cast<int*>(zCFont + 0x2C) = static_cast<int>(((ttFont->fontFace->size->metrics.descender + 63) & -64) / 64);
     }
 
     g_fonts.emplace(ttFont);
@@ -378,9 +387,45 @@ void __fastcall G1_zCFont_Destructor(DWORD zCFont)
     Org_G1_zCFont_Destructor(zCFont);
 }
 
+void __fastcall G1_zCView_RecalcChildsPos(DWORD zCView)
+{
+    reinterpret_cast<void(__thiscall*)(DWORD)>(0x6FD9A0)(zCView);
+
+    DWORD zCFontMan = *reinterpret_cast<DWORD*>(0x8DC71C);
+    if(zCFontMan)
+    {
+        int fonts = *reinterpret_cast<int*>(zCFontMan + 0x08);
+        for(int i = 0; i < fonts; ++i)
+        {
+            DWORD zCFont = reinterpret_cast<DWORD(__thiscall*)(DWORD, int)>(0x6DF220)(zCFontMan, i);
+            if(zCFont)
+            {
+                // Delete current loaded font
+                TTFont* ttFont = *reinterpret_cast<TTFont**>(zCFont + 0x20);
+                if(ttFont)
+                {
+                    for(auto& it : ttFont->cachedGlyphs)
+                    {
+                        LPDIRECTDRAWSURFACE7 texture = std::get<4>(it.second);
+                        texture->Release();
+                    }
+                    FT_Done_Face(ttFont->fontFace);
+                    ttFont->cachedGlyphs.clear();
+                    g_fonts.erase(ttFont);
+                    delete ttFont;
+                    *reinterpret_cast<DWORD*>(zCFont + 0x20) = 0;
+                }
+
+                // Reload font using LoadFontTexture
+                reinterpret_cast<int(__thiscall*)(DWORD, DWORD)>(0x6DF280)(zCFont, zCFont);
+            }
+        }
+    }
+}
+
 int __fastcall G1_zCFont_GetFontY(DWORD zCFont)
 {
-    return *reinterpret_cast<int*>(zCFont + 0x24);
+    return *reinterpret_cast<int*>(zCFont + 0x24) - *reinterpret_cast<int*>(zCFont + 0x2C);
 }
 
 int __fastcall G1_zCFont_GetFontX(DWORD zCFont, DWORD _EDX, zSTRING_G2& text)
@@ -855,8 +900,14 @@ int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
 
     std::string fntName;
     ReadFontDetails(fontName, fntName, size, r, g, b, a);
-    *reinterpret_cast<int*>(zCFont + 0x14) = size;
     if(!g_GD3D11) std::swap(r, b);
+
+    if(*reinterpret_cast<BYTE*>(0x789518) == 0xE9)
+    {
+        float UIscale = *reinterpret_cast<float*>(*reinterpret_cast<DWORD*>(0x66714F));
+        size = static_cast<int>(size * UIscale);
+    }
+    *reinterpret_cast<int*>(zCFont + 0x14) = size;
 
     zSTRING_G2& path = reinterpret_cast<zSTRING_G2&(__thiscall*)(DWORD, int)>(0x465260)(*reinterpret_cast<DWORD*>(0x8CD988), 24);
     fntName.insert(0, "\\_WORK\\FONTS\\G2_");
@@ -883,19 +934,22 @@ int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
         }
     }
 
-    FT_Set_Pixel_Sizes(ttFont->fontFace, 0, *reinterpret_cast<int*>(zCFont + 0x14));
+    FT_Set_Pixel_Sizes(ttFont->fontFace, 0, size);
     if(FT_IS_SCALABLE(ttFont->fontFace))
     {
         FT_Fixed scale = ttFont->fontFace->size->metrics.y_scale;
         int height = FT_MulFix(ttFont->fontFace->height, scale);
         int ascent = FT_MulFix(ttFont->fontFace->ascender, scale);
+        int descent = FT_MulFix(ttFont->fontFace->descender, scale);
         *reinterpret_cast<int*>(zCFont + 0x24) = static_cast<int>(((height + 63) & -64) / 64);
         *reinterpret_cast<int*>(zCFont + 0x28) = static_cast<int>(((ascent + 63) & -64) / 64);
+        *reinterpret_cast<int*>(zCFont + 0x2C) = static_cast<int>(((descent + 63) & -64) / 64);
     }
     else
     {
         *reinterpret_cast<int*>(zCFont + 0x24) = static_cast<int>(((ttFont->fontFace->size->metrics.height + 63) & -64) / 64);
         *reinterpret_cast<int*>(zCFont + 0x28) = static_cast<int>(((ttFont->fontFace->size->metrics.ascender + 63) & -64) / 64);
+        *reinterpret_cast<int*>(zCFont + 0x2C) = static_cast<int>(((ttFont->fontFace->size->metrics.descender + 63) & -64) / 64);
     }
 
     g_fonts.emplace(ttFont);
@@ -921,9 +975,45 @@ void __fastcall G2_zCFont_Destructor(DWORD zCFont)
     Org_G2_zCFont_Destructor(zCFont);
 }
 
+void __fastcall G2_zCView_RecalcChildsPos(DWORD zCView)
+{
+    reinterpret_cast<void(__thiscall*)(DWORD)>(0x7A7540)(zCView);
+
+    DWORD zCFontMan = *reinterpret_cast<DWORD*>(0xAB39D4);
+    if(zCFontMan)
+    {
+        int fonts = *reinterpret_cast<int*>(zCFontMan + 0x08);
+        for(int i = 0; i < fonts; ++i)
+        {
+            DWORD zCFont = reinterpret_cast<DWORD(__thiscall*)(DWORD, int)>(0x7884B0)(zCFontMan, i);
+            if(zCFont)
+            {
+                // Delete current loaded font
+                TTFont* ttFont = *reinterpret_cast<TTFont**>(zCFont + 0x20);
+                if(ttFont)
+                {
+                    for(auto& it : ttFont->cachedGlyphs)
+                    {
+                        LPDIRECTDRAWSURFACE7 texture = std::get<4>(it.second);
+                        texture->Release();
+                    }
+                    FT_Done_Face(ttFont->fontFace);
+                    ttFont->cachedGlyphs.clear();
+                    g_fonts.erase(ttFont);
+                    delete ttFont;
+                    *reinterpret_cast<DWORD*>(zCFont + 0x20) = 0;
+                }
+
+                // Reload font using LoadFontTexture
+                reinterpret_cast<int(__thiscall*)(DWORD, DWORD)>(0x788510)(zCFont, zCFont);
+            }
+        }
+    }
+}
+
 int __fastcall G2_zCFont_GetFontY(DWORD zCFont)
 {
-    return *reinterpret_cast<int*>(zCFont + 0x24);
+    return *reinterpret_cast<int*>(zCFont + 0x24) - *reinterpret_cast<int*>(zCFont + 0x2C);
 }
 
 int __fastcall G2_zCFont_GetFontX(DWORD zCFont, DWORD _EDX, zSTRING_G2& text)
@@ -1500,6 +1590,7 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
                 if(*reinterpret_cast<BYTE*>(0x6FFEB0) == 0xE9) WriteStack(0x6FFEB0, "\x83\xEC\x08\x56\x8B\xF1");
             }
 
+            HookCall(0x70232A, reinterpret_cast<DWORD>(&G1_zCView_RecalcChildsPos));
             Org_G1_zCFont_Destructor = reinterpret_cast<_Org_G1_zCFont_Destructor>(DetourFunction(reinterpret_cast<BYTE*>(0x6DF6A0), reinterpret_cast<BYTE*>(&G1_zCFont_Destructor)));
             Org_G1_zCRenderer_ClearDevice = reinterpret_cast<_Org_G1_zCRenderer_ClearDevice>(DetourFunction(reinterpret_cast<BYTE*>(0x7123F0), reinterpret_cast<BYTE*>(&G1_zCRenderer_ClearDevice)));
         }
@@ -1525,6 +1616,7 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
                 if(*reinterpret_cast<BYTE*>(0x7A9A40) == 0xE9) WriteStack(0x7A9A40, "\x83\xEC\x08\x56\x8B\xF1");
             }
 
+            HookCall(0x7ABF4A, reinterpret_cast<DWORD>(&G2_zCView_RecalcChildsPos));
             Org_G2_zCFont_Destructor = reinterpret_cast<_Org_G2_zCFont_Destructor>(DetourFunction(reinterpret_cast<BYTE*>(0x788920), reinterpret_cast<BYTE*>(&G2_zCFont_Destructor)));
             Org_G2_zCRenderer_ClearDevice = reinterpret_cast<_Org_G2_zCRenderer_ClearDevice>(DetourFunction(reinterpret_cast<BYTE*>(0x648820), reinterpret_cast<BYTE*>(&G2_zCRenderer_ClearDevice)));
         }
