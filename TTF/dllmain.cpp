@@ -13,36 +13,17 @@
 #include <string>
 #include <tuple>
 
+#include <shlwapi.h>
 #include <ddraw.h>
 #include <d3d.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
+
 #pragma comment(lib, "freetype")
+#pragma comment(lib, "shlwapi.lib")
 
-// Characters codepages: 0 = utf8, 1250-1258 = windows-xxxx
-#define USE_CODEPAGE 1250
-
-// Fixes reading strings from vdfs files that can result in memory corruption with utf8 encoding
-// it can happen in modification "New Balance"
-#define FIX_VDFS_READSTRING 0
-
-// prefix "G1_" or "G2_" are automatically added to font name
-// { FontName with TGA extension, { FontName with TTF extension and font size after ":", default red color, default green color, default blue color, default alpha color } },
-const static std::unordered_map<std::string, std::tuple<std::string, int, int, int, int>> g_fontsWrapper = {
-    {"FONT_DEFAULT.TGA", {"GothicFont.ttf:18", 0xCD, 0xBA, 0x9C, 0xFF}},
-    {"FONT_OLD_10_WHITE.TGA", {"GothicFont.ttf:18", 0xCD, 0xBA, 0x9C, 0xFF}},
-    {"FONT_OLD_10_WHITE_HI.TGA", {"GothicFont.ttf:18", 0xFF, 0xFF, 0xFF, 0xFF}},
-    {"FONT_OLD_20_WHITE.TGA", {"GothicFont.ttf:30", 0xFF, 0xDE, 0xAC, 0xFF}},
-    {"FONT_OLD_20_WHITE_HI.TGA", {"GothicFont.ttf:30", 0xFF, 0xFF, 0xFF, 0xFF}},
-    {"FONT_10_BOOK.TGA", {"GothicFont.ttf:18", 0x0F, 0x0F, 0x0F, 0xFF}},
-    {"FONT_10_BOOK_HI.TGA", {"GothicFont.ttf:18", 0x1E, 0x1E, 0x1E, 0xFF}},
-    {"FONT_15_BOOK.TGA", {"GothicFont.ttf:30", 0x0F, 0x0F, 0x0F, 0xFF}},
-    {"FONT_15_BOOK_HI.TGA", {"GothicFont.ttf:30", 0x1E, 0x1E, 0x1E, 0xFF}},
-    {"FONT_20_BOOK.TGA", {"GothicFont.ttf:32", 0x0F, 0x0F, 0x0F, 0xFF}},
-    {"FONT_20_BOOK_HI.TGA", {"GothicFont.ttf:32", 0x1E, 0x1E, 0x1E, 0xFF}},
-    {"DEFAULT", {"GothicFont.ttf:20", 0xFF, 0xFF, 0xFF, 0xFF}},
-};
+std::unordered_map<std::string, std::string> g_fontsWrapper;
 
 struct TTFont
 {
@@ -53,6 +34,7 @@ struct TTFont
 
 bool g_GD3D11 = false;
 bool g_initialized = false;
+int g_useEncoding = 0;
 std::unordered_set<TTFont*> g_fonts;
 FT_Library g_ft;
 
@@ -65,6 +47,82 @@ _Org_G1_zCRenderer_ClearDevice Org_G1_zCRenderer_ClearDevice;
 _Org_G2_zCFont_Destructor Org_G2_zCFont_Destructor;
 _Org_G2_zCRenderer_ClearDevice Org_G2_zCRenderer_ClearDevice;
 
+static void ReadFontDetail(const std::string& lhLine, const std::string& rhLine, int& fontSize, int& fontRed, int& fontGreen, int& fontBlue, int& fontAlpha)
+{
+    if(lhLine == "SIZE")
+    {
+        try {fontSize = std::stol(rhLine);}
+        catch(const std::exception&) {fontSize = 20;}
+    }
+    else if(lhLine == "R" || lhLine == "RED")
+    {
+        try {fontRed = std::stol(rhLine);}
+        catch(const std::exception&) {fontRed = 255;}
+    }
+    else if(lhLine == "G" || lhLine == "GREEN")
+    {
+        try {fontGreen = std::stol(rhLine);}
+        catch(const std::exception&) {fontGreen = 255;}
+    }
+    else if(lhLine == "B" || lhLine == "BLUE")
+    {
+        try {fontBlue = std::stol(rhLine);}
+        catch(const std::exception&) {fontBlue = 255;}
+    }
+    else if(lhLine == "A" || lhLine == "ALPHA")
+    {
+        try {fontAlpha = std::stol(rhLine);}
+        catch(const std::exception&) {fontAlpha = 255;}
+    }
+}
+
+static void ReadFontDetails(const std::string& fontStr, std::string& fontName, int& fontSize, int& fontRed, int& fontGreen, int& fontBlue, int& fontAlpha)
+{
+    size_t pos = 0, start = 0;
+    while((pos = fontStr.find(':', pos)) != std::string::npos)
+    {
+        std::size_t eqpos;
+        std::string elem = fontStr.substr(start, pos - start);
+        if((eqpos = elem.find("=")) != std::string::npos)
+        {
+            std::transform(elem.begin(), elem.end(), elem.begin(), toupper);
+
+            std::string lhLine = elem.substr(0, eqpos);
+            std::string rhLine = elem.substr(eqpos + 1);
+            lhLine.erase(lhLine.find_last_not_of(' ') + 1);
+            lhLine.erase(0, lhLine.find_first_not_of(' '));
+            rhLine.erase(rhLine.find_last_not_of(' ') + 1);
+            rhLine.erase(0, rhLine.find_first_not_of(' '));
+            ReadFontDetail(lhLine, rhLine, fontSize, fontRed, fontGreen, fontBlue, fontAlpha);
+        }
+        else
+            fontName = elem;
+
+        start = ++pos;
+    }
+
+    pos = fontStr.length();
+    if(start >= pos)
+        return;
+
+    std::size_t eqpos;
+    std::string elem = fontStr.substr(start, pos - start);
+    if((eqpos = elem.find("=")) != std::string::npos)
+    {
+        std::transform(elem.begin(), elem.end(), elem.begin(), toupper);
+
+        std::string lhLine = elem.substr(0, eqpos);
+        std::string rhLine = elem.substr(eqpos + 1);
+        lhLine.erase(lhLine.find_last_not_of(' ') + 1);
+        lhLine.erase(0, lhLine.find_first_not_of(' '));
+        rhLine.erase(rhLine.find_last_not_of(' ') + 1);
+        rhLine.erase(0, rhLine.find_first_not_of(' '));
+        ReadFontDetail(lhLine, rhLine, fontSize, fontRed, fontGreen, fontBlue, fontAlpha);
+    }
+    else
+        fontName = elem;
+}
+
 __forceinline DWORD UTIL_power_of_2(DWORD input)
 {
     DWORD value = 1;
@@ -75,34 +133,20 @@ __forceinline DWORD UTIL_power_of_2(DWORD input)
 #define UNKNOWN_UNICODE 0xFFFD
 static uint32_t UTF8toUTF32(const char* text, int textlen, int& utf8size)
 {
-#if USE_CODEPAGE == 1250
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1250[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1251
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1251[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1252
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1252[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1253
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1253[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1254
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1254[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1255
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1255[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1256
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1256[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1257
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1257[static_cast<unsigned char>(text[0])]);
-#elif USE_CODEPAGE == 1258
-    utf8size = 1;
-    return static_cast<uint32_t>(CodePage1258[static_cast<unsigned char>(text[0])]);
-#else
+    switch(g_useEncoding)
+    {
+        case 1258: utf8size = 1; return static_cast<uint32_t>(CodePage1258[static_cast<unsigned char>(text[0])]);
+        case 1257: utf8size = 1; return static_cast<uint32_t>(CodePage1257[static_cast<unsigned char>(text[0])]);
+        case 1256: utf8size = 1; return static_cast<uint32_t>(CodePage1256[static_cast<unsigned char>(text[0])]);
+        case 1255: utf8size = 1; return static_cast<uint32_t>(CodePage1255[static_cast<unsigned char>(text[0])]);
+        case 1254: utf8size = 1; return static_cast<uint32_t>(CodePage1254[static_cast<unsigned char>(text[0])]);
+        case 1253: utf8size = 1; return static_cast<uint32_t>(CodePage1253[static_cast<unsigned char>(text[0])]);
+        case 1252: utf8size = 1; return static_cast<uint32_t>(CodePage1252[static_cast<unsigned char>(text[0])]);
+        case 1251: utf8size = 1; return static_cast<uint32_t>(CodePage1251[static_cast<unsigned char>(text[0])]);
+        case 1250: utf8size = 1; return static_cast<uint32_t>(CodePage1250[static_cast<unsigned char>(text[0])]);
+        default: break;
+    }
+
     const uint8_t* p = reinterpret_cast<const uint8_t*>(text);
     size_t left = 0;
     int save_textlen = textlen;
@@ -179,7 +223,6 @@ static uint32_t UTF8toUTF32(const char* text, int textlen, int& utf8size)
 
     utf8size = (save_textlen - textlen);
     return ch;
-#endif
 }
 
 void LoadGlyph(TTFont* fnt, LPDIRECTDRAW7 device, LPDIRECTDRAWSURFACE7& texture, float& u0, float& u1, float& v0, float& v1)
@@ -235,9 +278,9 @@ void LoadGlyph(TTFont* fnt, LPDIRECTDRAW7 device, LPDIRECTDRAWSURFACE7& texture,
             {
                 unsigned char gray = srcData[w];
                 unsigned char* bgra = dstData + w * 4;
-                bgra[0] = gray * fnt->r / 255;
-                bgra[1] = gray * fnt->g / 255;
-                bgra[2] = gray * fnt->b / 255;
+                bgra[0] = fnt->r;
+                bgra[1] = fnt->g;
+                bgra[2] = fnt->b;
                 bgra[3] = gray * fnt->a / 255;
             }
             dstData += ddsd.lPitch;
@@ -252,7 +295,7 @@ void LoadGlyph(TTFont* fnt, LPDIRECTDRAW7 device, LPDIRECTDRAWSURFACE7& texture,
 
 int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& fName)
 {
-    int r = 0xFF, g = 0xFF, b = 0xFF, a = 0xFF;
+    int size = 20, r = 0xFF, g = 0xFF, b = 0xFF, a = 0xFF;
     std::string fontName(fName.ToChar(), fName.Length());
     std::transform(fontName.begin(), fontName.end(), fontName.begin(), toupper);
     if(fontName.find(':') == std::string::npos)
@@ -264,38 +307,22 @@ int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
             if(it == g_fontsWrapper.end())
                 return 0;
         }
-        fontName.assign(std::get<0>(it->second));
-        if(g_GD3D11)
-        {
-            r = std::get<1>(it->second);
-            g = std::get<2>(it->second);
-            b = std::get<3>(it->second);
-            a = std::get<4>(it->second);
-        }
-        else
-        {
-            r = std::get<3>(it->second);
-            g = std::get<2>(it->second);
-            b = std::get<1>(it->second);
-            a = std::get<4>(it->second);
-        }
+        fontName.assign(it->second);
     }
 
-    size_t pos = fontName.find(':');
-    if(pos == std::string::npos)
-        return 0;
-
-    *reinterpret_cast<int*>(zCFont + 0x14) = atoi(fontName.substr(pos + 1).c_str());
-    fontName = fontName.substr(0, pos);
+    std::string fntName;
+    ReadFontDetails(fontName, fntName, size, r, g, b, a);
+    *reinterpret_cast<int*>(zCFont + 0x14) = size;
+    if(!g_GD3D11) std::swap(r, b);
 
     zSTRING_G2& path = reinterpret_cast<zSTRING_G2&(__thiscall*)(DWORD, int)>(0x45FC00)(*reinterpret_cast<DWORD*>(0x869694), 23);
-    fontName.insert(0, "\\_WORK\\FONTS\\G1_");
-    fontName.insert(0, path.ToChar(), path.Length());
+    fntName.insert(0, "\\_WORK\\FONTS\\G1_");
+    fntName.insert(0, path.ToChar(), path.Length());
 
     TTFont* ttFont = new TTFont;
     ttFont->r = r; ttFont->g = g; ttFont->b = b; ttFont->a = a;
     *reinterpret_cast<TTFont**>(zCFont + 0x20) = ttFont;
-    if(FT_New_Face(g_ft, fontName.c_str(), 0, &ttFont->fontFace))
+    if(FT_New_Face(g_ft, fntName.c_str(), 0, &ttFont->fontFace))
     {
         MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load font", MB_ICONHAND);
         exit(-1);
@@ -496,8 +523,13 @@ void __fastcall G1_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
             int glyphTop = std::get<3>(it->second);
             int glyphAdvance = std::get<9>(it->second);
 
-            float minx = 0.5f + static_cast<float>(x) + glyphLeft;
-            float miny = 0.5f + static_cast<float>(y) + fontAscent - glyphTop;
+            float minx = static_cast<float>(x) + glyphLeft;
+            float miny = static_cast<float>(y) + fontAscent - glyphTop;
+            if(!g_GD3D11)
+            {
+                minx += 0.5f;
+                miny += 0.5f;
+            }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
 
@@ -678,8 +710,13 @@ void __fastcall G1_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
             int glyphTop = std::get<3>(it->second);
             int glyphAdvance = std::get<9>(it->second);
 
-            float minx = 0.5f + static_cast<float>(position0) + glyphLeft;
-            float miny = 0.5f + static_cast<float>(position1) + fontAscent - glyphTop;
+            float minx = static_cast<float>(position0) + glyphLeft;
+            float miny = static_cast<float>(position1) + fontAscent - glyphTop;
+            if(!g_GD3D11)
+            {
+                minx += 0.5f;
+                miny += 0.5f;
+            }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
 
@@ -766,7 +803,6 @@ void __fastcall G1_zCRenderer_ClearDevice(DWORD zCRnd_D3D)
     Org_G1_zCRenderer_ClearDevice(zCRnd_D3D);
 }
 
-#if FIX_VDFS_READSTRING >= 1
 int __fastcall G1_zFILE_VDFS_ReadString(DWORD zDisk_VDFS, DWORD _EDX, zSTRING_G1& str)
 {
     if(!reinterpret_cast<BYTE*>(0x85F2CC))
@@ -799,11 +835,10 @@ int __fastcall G1_zFILE_VDFS_ReadString(DWORD zDisk_VDFS, DWORD _EDX, zSTRING_G1
     }
     return 0;
 }
-#endif
 
 int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& fName)
 {
-    int r = 0xFF, g = 0xFF, b = 0xFF, a = 0xFF;
+    int size = 20, r = 0xFF, g = 0xFF, b = 0xFF, a = 0xFF;
     std::string fontName(fName.ToChar(), fName.Length());
     std::transform(fontName.begin(), fontName.end(), fontName.begin(), toupper);
     if(fontName.find(':') == std::string::npos)
@@ -815,38 +850,22 @@ int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
             if(it == g_fontsWrapper.end())
                 return 0;
         }
-        fontName.assign(std::get<0>(it->second));
-        if(g_GD3D11)
-        {
-            r = std::get<1>(it->second);
-            g = std::get<2>(it->second);
-            b = std::get<3>(it->second);
-            a = std::get<4>(it->second);
-        }
-        else
-        {
-            r = std::get<3>(it->second);
-            g = std::get<2>(it->second);
-            b = std::get<1>(it->second);
-            a = std::get<4>(it->second);
-        }
+        fontName.assign(it->second);
     }
 
-    size_t pos = fontName.find(':');
-    if(pos == std::string::npos)
-        return 0;
-
-    *reinterpret_cast<int*>(zCFont + 0x14) = atoi(fontName.substr(pos + 1).c_str());
-    fontName = fontName.substr(0, pos);
+    std::string fntName;
+    ReadFontDetails(fontName, fntName, size, r, g, b, a);
+    *reinterpret_cast<int*>(zCFont + 0x14) = size;
+    if(!g_GD3D11) std::swap(r, b);
 
     zSTRING_G2& path = reinterpret_cast<zSTRING_G2&(__thiscall*)(DWORD, int)>(0x465260)(*reinterpret_cast<DWORD*>(0x8CD988), 24);
-    fontName.insert(0, "\\_WORK\\FONTS\\G2_");
-    fontName.insert(0, path.ToChar(), path.Length());
+    fntName.insert(0, "\\_WORK\\FONTS\\G2_");
+    fntName.insert(0, path.ToChar(), path.Length());
 
     TTFont* ttFont = new TTFont;
     ttFont->r = r; ttFont->g = g; ttFont->b = b; ttFont->a = a;
     *reinterpret_cast<TTFont**>(zCFont + 0x20) = ttFont;
-    if(FT_New_Face(g_ft, fontName.c_str(), 0, &ttFont->fontFace))
+    if(FT_New_Face(g_ft, fntName.c_str(), 0, &ttFont->fontFace))
     {
         MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load font", MB_ICONHAND);
         exit(-1);
@@ -1047,8 +1066,13 @@ void __fastcall G2_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
             int glyphTop = std::get<3>(it->second);
             int glyphAdvance = std::get<9>(it->second);
 
-            float minx = 0.5f + static_cast<float>(x) + glyphLeft;
-            float miny = 0.5f + static_cast<float>(y) + fontAscent - glyphTop;
+            float minx = static_cast<float>(x) + glyphLeft;
+            float miny = static_cast<float>(y) + fontAscent - glyphTop;
+            if(!g_GD3D11)
+            {
+                minx += 0.5f;
+                miny += 0.5f;
+            }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
 
@@ -1229,8 +1253,13 @@ void __fastcall G2_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
             int glyphTop = std::get<3>(it->second);
             int glyphAdvance = std::get<9>(it->second);
 
-            float minx = 0.5f + static_cast<float>(position0) + glyphLeft;
-            float miny = 0.5f + static_cast<float>(position1) + fontAscent - glyphTop;
+            float minx = static_cast<float>(position0) + glyphLeft;
+            float miny = static_cast<float>(position1) + fontAscent - glyphTop;
+            if(!g_GD3D11)
+            {
+                minx += 0.5f;
+                miny += 0.5f;
+            }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
 
@@ -1317,7 +1346,6 @@ void __fastcall G2_zCRenderer_ClearDevice(DWORD zCRnd_D3D)
     Org_G2_zCRenderer_ClearDevice(zCRnd_D3D);
 }
 
-#if FIX_VDFS_READSTRING >= 1
 int __fastcall G2_zFILE_VDFS_ReadString(DWORD zDisk_VDFS, DWORD _EDX, zSTRING_G2& str)
 {
     if(!reinterpret_cast<BYTE*>(0x8C34C4))
@@ -1350,7 +1378,88 @@ int __fastcall G2_zFILE_VDFS_ReadString(DWORD zDisk_VDFS, DWORD _EDX, zSTRING_G2
     }
     return 0;
 }
-#endif
+
+static void ReadConfigurationFile()
+{
+    char cfgPath[MAX_PATH];
+    GetModuleFileNameA(GetModuleHandleA(nullptr), cfgPath, sizeof(cfgPath));
+    PathRemoveFileSpecA(cfgPath);
+    strcat_s(cfgPath, "\\TTF.ini");
+
+    FILE* f;
+    errno_t err = fopen_s(&f, cfgPath, "r");
+    if(err == 0)
+    {
+        std::string currentSector = "none";
+
+        char readedLine[1024];
+        while(fgets(readedLine, sizeof(readedLine), f) != nullptr)
+        {
+            size_t len = strlen(readedLine);
+            if(len > 0)
+            {
+                if(readedLine[len - 1] == '\n' || readedLine[len - 1] == '\r')
+                    len -= 1;
+                if(len > 0)
+                {
+                    if(readedLine[len - 1] == '\n' || readedLine[len - 1] == '\r')
+                        len -= 1;
+                }
+            }
+            if(len == 0)
+                continue;
+
+            if(readedLine[0] == '[' && readedLine[len - 1] == ']')
+            {
+                currentSector = std::string(readedLine + 1, len - 2);
+                std::transform(currentSector.begin(), currentSector.end(), currentSector.begin(), toupper);
+            }
+            else if(readedLine[0] != ';' && readedLine[0] != '/')
+            {
+                std::size_t eqpos;
+                std::string rLine = std::string(readedLine, len);
+                std::transform(rLine.begin(), rLine.end(), rLine.begin(), toupper);
+                if((eqpos = rLine.find("=")) != std::string::npos)
+                {
+                    std::string lhLine = rLine.substr(0, eqpos);
+                    std::string rhLine = rLine.substr(eqpos + 1);
+                    lhLine.erase(lhLine.find_last_not_of(' ') + 1);
+                    lhLine.erase(0, lhLine.find_first_not_of(' '));
+                    rhLine.erase(rhLine.find_last_not_of(' ') + 1);
+                    rhLine.erase(0, rhLine.find_first_not_of(' '));
+                    if(currentSector == "CONFIGURATION")
+                    {
+                        if(lhLine == "CODEPAGE")
+                        {
+                            if(rhLine == "WINDOWS-1250" || rhLine == "WINDOWS1250" || rhLine == "WINDOWS 1250" || rhLine == "1250")
+                                g_useEncoding = 1250;
+                            else if(rhLine == "WINDOWS-1251" || rhLine == "WINDOWS1251" || rhLine == "WINDOWS 1251" || rhLine == "1251")
+                                g_useEncoding = 1251;
+                            else if(rhLine == "WINDOWS-1252" || rhLine == "WINDOWS1252" || rhLine == "WINDOWS 1252" || rhLine == "1252")
+                                g_useEncoding = 1252;
+                            else if(rhLine == "WINDOWS-1253" || rhLine == "WINDOWS1253" || rhLine == "WINDOWS 1253" || rhLine == "1253")
+                                g_useEncoding = 1253;
+                            else if(rhLine == "WINDOWS-1254" || rhLine == "WINDOWS1254" || rhLine == "WINDOWS 1254" || rhLine == "1254")
+                                g_useEncoding = 1254;
+                            else if(rhLine == "WINDOWS-1255" || rhLine == "WINDOWS1255" || rhLine == "WINDOWS 1255" || rhLine == "1255")
+                                g_useEncoding = 1255;
+                            else if(rhLine == "WINDOWS-1256" || rhLine == "WINDOWS1256" || rhLine == "WINDOWS 1256" || rhLine == "1256")
+                                g_useEncoding = 1256;
+                            else if(rhLine == "WINDOWS-1257" || rhLine == "WINDOWS1257" || rhLine == "WINDOWS 1257" || rhLine == "1257")
+                                g_useEncoding = 1257;
+                            else if(rhLine == "WINDOWS-1258" || rhLine == "WINDOWS1258" || rhLine == "WINDOWS 1258" || rhLine == "1258")
+                                g_useEncoding = 1258;
+                            else
+                                g_useEncoding = 0;
+                        }
+                    }
+                    else if(currentSector == "FONTS")
+                        g_fontsWrapper.emplace(lhLine, rhLine);
+                }
+            }
+        }
+    }
+}
 
 BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 {
@@ -1366,6 +1475,8 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
         if(ddrawdll && GetProcAddress(ddrawdll, "GDX_AddPointLocator"))
             g_GD3D11 = true;
 
+        ReadConfigurationFile();
+
         DWORD baseAddr = reinterpret_cast<DWORD>(GetModuleHandleA(nullptr));
         // G1_08k
         if(*reinterpret_cast<DWORD*>(baseAddr + 0x160) == 0x37A8D8 && *reinterpret_cast<DWORD*>(baseAddr + 0x37A960) == 0x7D01E4 && *reinterpret_cast<DWORD*>(baseAddr + 0x37A98B) == 0x7D01E8)
@@ -1376,10 +1487,12 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
             HookJMP(0x6E0210, reinterpret_cast<DWORD>(&G1_zCFont_GetFontX));
             HookJMP(0x6FFF80, reinterpret_cast<DWORD>(&G1_zCView_PrintChars));
             HookJMP(0x756B20, reinterpret_cast<DWORD>(&G1_zCViewPrint_BlitTextCharacters));
-#if FIX_VDFS_READSTRING >= 1
-            HookJMP(0x446750, reinterpret_cast<DWORD>(&G1_zFILE_VDFS_ReadString));
-#endif
+            if(g_useEncoding == 0)
+                HookJMP(0x446750, reinterpret_cast<DWORD>(&G1_zFILE_VDFS_ReadString));
 
+            WriteStack(0x858D70, "\x20\x2D\x5F\x23\x2B\x2A\x7E\x60\x3D\x2F\x26\x25\x24\x22\x7B\x5B\x5D\x7D\x29\x5C\x0A\x00\x00");
+            WriteStack(0x852E38, "\x20\x23\x2B\x2A\x7E\x60\x3D\x2F\x26\x5C\x0A\x09\x00");
+            
             // Patch GD3D11 zCView::BlitText and zCView::Print functions to avoid incompatibility with GD3D11 text rendering optimization
             if(g_GD3D11)
             {
@@ -1399,9 +1512,11 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
             HookJMP(0x7894F0, reinterpret_cast<DWORD>(&G2_zCFont_GetFontX));
             HookJMP(0x7A9B10, reinterpret_cast<DWORD>(&G2_zCView_PrintChars));
             HookJMP(0x693650, reinterpret_cast<DWORD>(&G2_zCViewPrint_BlitTextCharacters));
-#if FIX_VDFS_READSTRING >= 1
-            HookJMP(0x44AA80, reinterpret_cast<DWORD>(&G2_zFILE_VDFS_ReadString));
-#endif
+            if(g_useEncoding == 0)
+                HookJMP(0x44AA80, reinterpret_cast<DWORD>(&G2_zFILE_VDFS_ReadString));
+
+            WriteStack(0x8B0E20, "\x20\x2D\x5F\x23\x2B\x2A\x7E\x60\x3D\x2F\x26\x25\x24\x22\x7B\x5B\x5D\x7D\x29\x5C\x0A\x00\x00");
+            WriteStack(0x8BC8F4, "\x20\x23\x2B\x2A\x7E\x60\x3D\x2F\x26\x5C\x0A\x09\x00");
 
             // Patch GD3D11 zCView::BlitText and zCView::Print functions to avoid incompatibility with GD3D11 text rendering optimization
             if(g_GD3D11)
