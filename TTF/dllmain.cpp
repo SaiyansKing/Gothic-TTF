@@ -572,8 +572,8 @@ void __fastcall G1_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
             float miny = static_cast<float>(y) + fontAscent - glyphTop;
             if(!g_GD3D11)
             {
-                minx += 0.5f;
-                miny += 0.5f;
+                minx -= 0.5f;
+                miny -= 0.5f;
             }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
@@ -759,8 +759,8 @@ void __fastcall G1_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
             float miny = static_cast<float>(position1) + fontAscent - glyphTop;
             if(!g_GD3D11)
             {
-                minx += 0.5f;
-                miny += 0.5f;
+                minx -= 0.5f;
+                miny -= 0.5f;
             }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
@@ -1160,8 +1160,8 @@ void __fastcall G2_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
             float miny = static_cast<float>(y) + fontAscent - glyphTop;
             if(!g_GD3D11)
             {
-                minx += 0.5f;
-                miny += 0.5f;
+                minx -= 0.5f;
+                miny -= 0.5f;
             }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
@@ -1347,8 +1347,8 @@ void __fastcall G2_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
             float miny = static_cast<float>(position1) + fontAscent - glyphTop;
             if(!g_GD3D11)
             {
-                minx += 0.5f;
-                miny += 0.5f;
+                minx -= 0.5f;
+                miny -= 0.5f;
             }
             float maxx = minx + glyphWidth;
             float maxy = miny + glyphHeight;
