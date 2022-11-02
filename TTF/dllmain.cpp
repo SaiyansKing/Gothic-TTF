@@ -876,6 +876,7 @@ int __fastcall G1_zFILE_VDFS_ReadString(DWORD zDisk_VDFS, DWORD _EDX, zSTRING_G1
         while(!readedString.empty() && (readedString.back() == '\n' || readedString.back() == '\r'))
             readedString.pop_back();
 
+        reinterpret_cast<void(__fastcall*)(zSTRING_G1&)>(0x401260)(str);
         reinterpret_cast<void(__thiscall*)(zSTRING_G1&, const char*)>(0x4013A0)(str, readedString.c_str());
     }
     return 0;
@@ -1464,6 +1465,7 @@ int __fastcall G2_zFILE_VDFS_ReadString(DWORD zDisk_VDFS, DWORD _EDX, zSTRING_G2
         while(!readedString.empty() && (readedString.back() == '\n' || readedString.back() == '\r'))
             readedString.pop_back();
 
+        reinterpret_cast<void(__fastcall*)(zSTRING_G2&)>(0x401160)(str);
         reinterpret_cast<void(__thiscall*)(zSTRING_G2&, const char*)>(0x4010C0)(str, readedString.c_str());
     }
     return 0;
