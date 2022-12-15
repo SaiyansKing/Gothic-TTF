@@ -34,6 +34,7 @@ struct TTFont
 
 bool g_GD3D11 = false;
 bool g_initialized = false;
+bool g_useScaling = true;
 int g_useEncoding = 0;
 std::unordered_set<TTFont*> g_fonts;
 FT_Library g_ft;
@@ -248,7 +249,7 @@ void LoadGlyph(TTFont* fnt, LPDIRECTDRAW7 device, LPDIRECTDRAWSURFACE7& texture,
         HRESULT hr = device->CreateSurface(&ddsd, &texture, nullptr);
         if(FAILED(hr))
         {
-            MessageBoxW(nullptr, L"Gothic TTF", L"Failed to create glyph texture", MB_ICONHAND);
+            MessageBoxW(nullptr, L"Failed to create glyph texture", L"Gothic TTF", MB_ICONHAND);
             exit(-1);
         }
 
@@ -265,6 +266,7 @@ void LoadGlyph(TTFont* fnt, LPDIRECTDRAW7 device, LPDIRECTDRAWSURFACE7& texture,
     if(FAILED(hr))
         return;
 
+    memset(ddsd.lpSurface, 0x00, ddsd.lPitch * ddsd.dwHeight);
     if(font->glyph->bitmap.pixel_mode == FT_PIXEL_MODE_GRAY)
     {
         int srcPitch = font->glyph->bitmap.pitch;
@@ -287,8 +289,6 @@ void LoadGlyph(TTFont* fnt, LPDIRECTDRAW7 device, LPDIRECTDRAWSURFACE7& texture,
             srcData += srcPitch;
         }
     }
-    else
-        memset(ddsd.lpSurface, 0x00, ddsd.lPitch * ddsd.dwHeight);
 
     texture->Unlock(nullptr);
 }
@@ -314,7 +314,7 @@ int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
     ReadFontDetails(fontName, fntName, size, r, g, b, a);
     if(!g_GD3D11) std::swap(r, b);
 
-    if(*reinterpret_cast<BYTE*>(0x6E0238) == 0xE9)
+    if(g_useScaling && *reinterpret_cast<BYTE*>(0x6E0238) == 0xE9)
     {
         float UIscale = *reinterpret_cast<float*>(*reinterpret_cast<DWORD*>(0x5A88E1));
         size = static_cast<int>(size * UIscale);
@@ -330,7 +330,7 @@ int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
     *reinterpret_cast<TTFont**>(zCFont + 0x20) = ttFont;
     if(FT_New_Face(g_ft, fntName.c_str(), 0, &ttFont->fontFace))
     {
-        MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load font", MB_ICONHAND);
+        MessageBoxW(nullptr, L"Failed to load font", L"Gothic TTF", MB_ICONHAND);
         exit(-1);
     }
     for(int i = 0; i < ttFont->fontFace->num_charmaps; ++i)
@@ -448,7 +448,7 @@ int __fastcall G1_zCFont_GetFontX(DWORD zCFont, DWORD _EDX, zSTRING_G2& text)
             {
                 if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                 {
-                    MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                    MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                     exit(-1);
                 }
                 LPDIRECTDRAWSURFACE7 texture = nullptr;
@@ -536,7 +536,7 @@ void __fastcall G1_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
             {
                 if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                 {
-                    MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                    MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                     exit(-1);
                 }
                 float uv[4] = {};
@@ -554,7 +554,7 @@ void __fastcall G1_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
 
                     if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                     {
-                        MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                        MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                         exit(-1);
                     }
                     float uv[4] = {};
@@ -723,7 +723,7 @@ void __fastcall G1_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
             {
                 if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                 {
-                    MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                    MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                     exit(-1);
                 }
                 float uv[4] = {};
@@ -741,7 +741,7 @@ void __fastcall G1_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
 
                     if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                     {
-                        MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                        MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                         exit(-1);
                     }
                     float uv[4] = {};
@@ -903,7 +903,7 @@ int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
     ReadFontDetails(fontName, fntName, size, r, g, b, a);
     if(!g_GD3D11) std::swap(r, b);
 
-    if(*reinterpret_cast<BYTE*>(0x789518) == 0xE9)
+    if(g_useScaling && *reinterpret_cast<BYTE*>(0x789518) == 0xE9)
     {
         float UIscale = *reinterpret_cast<float*>(*reinterpret_cast<DWORD*>(0x66714F));
         size = static_cast<int>(size * UIscale);
@@ -919,7 +919,7 @@ int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
     *reinterpret_cast<TTFont**>(zCFont + 0x20) = ttFont;
     if(FT_New_Face(g_ft, fntName.c_str(), 0, &ttFont->fontFace))
     {
-        MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load font", MB_ICONHAND);
+        MessageBoxW(nullptr, L"Failed to load font", L"Gothic TTF", MB_ICONHAND);
         exit(-1);
     }
     for(int i = 0; i < ttFont->fontFace->num_charmaps; ++i)
@@ -1037,7 +1037,7 @@ int __fastcall G2_zCFont_GetFontX(DWORD zCFont, DWORD _EDX, zSTRING_G2& text)
             {
                 if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                 {
-                    MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                    MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                     exit(-1);
                 }
                 LPDIRECTDRAWSURFACE7 texture = nullptr;
@@ -1125,7 +1125,7 @@ void __fastcall G2_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
             {
                 if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                 {
-                    MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                    MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                     exit(-1);
                 }
                 float uv[4] = {};
@@ -1143,7 +1143,7 @@ void __fastcall G2_zCView_PrintChars(DWORD zCView, DWORD _EDX, int x, int y, zST
 
                     if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                     {
-                        MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                        MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                         exit(-1);
                     }
                     float uv[4] = {};
@@ -1312,7 +1312,7 @@ void __fastcall G2_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
             {
                 if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                 {
-                    MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                    MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                     exit(-1);
                 }
                 float uv[4] = {};
@@ -1330,7 +1330,7 @@ void __fastcall G2_zCViewPrint_BlitTextCharacters(DWORD zCViewPrint, DWORD zCVie
 
                     if(FT_Load_Char(ttFont->fontFace, utf32, FT_LOAD_RENDER))
                     {
-                        MessageBoxW(nullptr, L"Gothic TTF", L"Failed to load Glyph", MB_ICONHAND);
+                        MessageBoxW(nullptr, L"Failed to load Glyph", L"Gothic TTF", MB_ICONHAND);
                         exit(-1);
                     }
                     float uv[4] = {};
@@ -1521,7 +1521,9 @@ static void ReadConfigurationFile()
                     rhLine.erase(0, rhLine.find_first_not_of(' '));
                     if(currentSector == "CONFIGURATION")
                     {
-                        if(lhLine == "CODEPAGE")
+                        if(lhLine == "SCALEFONTS")
+                            g_useScaling = (rhLine == "TRUE" || rhLine == "1");
+                        else if(lhLine == "CODEPAGE")
                         {
                             if(rhLine == "WINDOWS-1250" || rhLine == "WINDOWS1250" || rhLine == "WINDOWS 1250" || rhLine == "1250")
                                 g_useEncoding = 1250;
@@ -1559,7 +1561,7 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
     {
         if(FT_Init_FreeType(&g_ft))
         {
-            MessageBoxW(nullptr, L"Gothic TTF", L"Could not initialize FreeType Library", MB_ICONHAND);
+            MessageBoxW(nullptr, L"Could not initialize FreeType Library", L"Gothic TTF", MB_ICONHAND);
             return FALSE;
         }
 
