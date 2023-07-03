@@ -34,6 +34,7 @@ struct TTFont
 
 bool g_GD3D11 = false;
 bool g_initialized = false;
+bool g_useBGRA = true;
 bool g_useScaling = true;
 int g_useEncoding = 0;
 std::unordered_set<TTFont*> g_fonts;
@@ -312,7 +313,7 @@ int __fastcall G1_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
 
     std::string fntName;
     ReadFontDetails(fontName, fntName, size, r, g, b, a);
-    if(!g_GD3D11) std::swap(r, b);
+    if(g_useBGRA) std::swap(r, b);
 
     if(g_useScaling && *reinterpret_cast<BYTE*>(0x6E0238) == 0xE9)
     {
@@ -901,7 +902,7 @@ int __fastcall G2_zCFont_LoadFontTexture(DWORD zCFont, DWORD _EDX, zSTRING_G2& f
 
     std::string fntName;
     ReadFontDetails(fontName, fntName, size, r, g, b, a);
-    if(!g_GD3D11) std::swap(r, b);
+    if(g_useBGRA) std::swap(r, b);
 
     if(g_useScaling && *reinterpret_cast<BYTE*>(0x789518) == 0xE9)
     {
@@ -1567,7 +1568,11 @@ BOOL WINAPI DllMain(HINSTANCE hInst, DWORD reason, LPVOID)
 
         HMODULE ddrawdll = GetModuleHandleA("ddraw.dll");
         if(ddrawdll && GetProcAddress(ddrawdll, "GDX_AddPointLocator"))
+        {
             g_GD3D11 = true;
+            if(!GetProcAddress(ddrawdll, "IsUsingBGRATextures"))
+                g_useBGRA = false;
+        }
 
         ReadConfigurationFile();
 
